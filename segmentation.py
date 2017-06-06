@@ -34,6 +34,11 @@ import keras.utils.visualize_util as vis_util
 import networks
 from keras.optimizers import Adam, SGD, RMSprop
 
+# import tensorflow as tf
+# sess = tf.Session()
+# from keras import backend as K
+# K.set_session(sess)
+
 
 ORI_PATH = '/mnt/filsystem1/code/dsb2017/code/zang/'
 MODEL_PATH = ORI_PATH + 'models/'
@@ -48,7 +53,7 @@ class SegmentationModel(object):
                 (2) int 'n_chan': number of channels being assessed. defaults to 4
                 (3) int 'batch_size': number of images to train on for each batch. defaults to 128
                 (4) bool 'loaded_model': True if loading a pre-existing model. defaults to False
-                (5) str 'architecture': type of model to use, options = single, dual, or two_path. defaults to single (only currently optimized version)
+                (5) str 'architecture': type of model to use, options = single, dual, or triple. defaults to single (only currently optimized version)
                 (6) float 'w_reg': value for l1 and l2 regularization. defaults to 0.01
                 (7) list 'n_filters': number of filters for each convolutional layer (4 total)
                 (8) list 'k_dims': dimension of kernel at each layer (will be a k_dim[n] x k_dim[n] square). Four total.
@@ -63,15 +68,19 @@ class SegmentationModel(object):
         self.n_filters = n_filters
         self.k_dims = k_dims
         #self.activation = activation
-        #activation=str(raw_input('Which model architecture(single、two_path、dual) are you willing to use? '))
+        #activation=str(raw_input('Which model architecture(single、triple、dual) are you willing to use? '))
         self.activation =activation
         if not self.loaded_model:
             if self.architecture == 'two_path':
                 self.model_comp = networks.comp_two_path()
-            elif self.architecture == 'dual':
-                self.model_comp = networks.comp_double()
-            elif self.architecture == 'fcn':
-                self.model_comp = networks.comp_fcn_model()
+            elif self.architecture == 'triple':
+                self.model_comp = networks.comp_triple()
+            elif self.architecture == 'local':
+                self.model_comp = networks.comp_local_path()
+            elif self.architecture == 'global':
+                self.model_comp = networks.comp_global_path()
+            elif self.architecture == 'triple_7':
+                self.model_comp = networks.comp_global_path()
         else:
             model = self.architecture
             self.model_comp = self.load_model_weights(model)
@@ -162,7 +171,7 @@ class SegmentationModel(object):
         label2 = len(np.argwhere(feature_map==2))
         label3 = len(np.argwhere(feature_map==3))
         label4 = len(np.argwhere(feature_map==4))
-        print label0, label1, label2, label3, label4
+        # print label0, label1, label2, label3, label4
 
         return fp1
 
@@ -195,26 +204,27 @@ class SegmentationModel(object):
         #adjust_gamma : 对原图像做幂运算，g>1,新图像比原图像暗；g<1,新图像比原图像亮，这里g==0.65
         image = adjust_gamma(color.gray2rgb(gray_img), 0.65)
         sliced_image = image.copy()
+        seg_result = image.copy()
         red_multiplier = [1, 0.2, 0.2]
         yellow_multiplier = [1,1,0.25]
         green_multiplier = [0.35,0.75,0.25]
         blue_multiplier = [0,0.25,0.9]
-        print 'lenght of zeros:{}'.format(len(zeros))
-        print 'length of ones:{}'.format(len(ones))
-        print 'length of twos:{}'.format(len(twos))
-        print 'length of threes:{}'.format(len(threes))
-        print 'length of fours:{}'.format(len(fours))
-        print 'img_mask.shape:',img_mask.shape
+        # print 'lenght of zeros:{}'.format(len(zeros))
+        # print 'length of ones:{}'.format(len(ones))
+        # print 'length of twos:{}'.format(len(twos))
+        # print 'length of threes:{}'.format(len(threes))
+        # print 'length of fours:{}'.format(len(fours))
+        # print 'img_mask.shape:',img_mask.shape
 
         # change colors of segmented classes
-        # for i in xrange(len(ones)):
-        #     sliced_image[ones[i][0]][ones[i][1]] = red_multiplier
-        # for i in xrange(len(twos)):
-        #     sliced_image[twos[i][0]][twos[i][1]] = green_multiplier
-        # for i in xrange(len(threes)):
-        #     sliced_image[threes[i][0]][threes[i][1]] = blue_multiplier
-        # for i in xrange(len(fours)):
-        #     sliced_image[fours[i][0]][fours[i][1]] = yellow_multiplier
+        for i in xrange(len(ones)):
+            seg_result[ones[i][0]][ones[i][1]] = red_multiplier
+        for i in xrange(len(twos)):
+            seg_result[twos[i][0]][twos[i][1]] = green_multiplier
+        for i in xrange(len(threes)):
+            seg_result[threes[i][0]][threes[i][1]] = blue_multiplier
+        for i in xrange(len(fours)):
+            seg_result[fours[i][0]][fours[i][1]] = yellow_multiplier
         
         name = test_img.split('/')[8]
         labels = io.imread(LABEL_PATH+name).astype(int)
@@ -223,30 +233,32 @@ class SegmentationModel(object):
         label_twos = np.argwhere(labels == 2)
         label_threes = np.argwhere(labels == 3)
         label_fours = np.argwhere(labels == 4)
-        print 'length of label_zeros:{}'.format(len(label_zeros))
-        print 'length of label_ones:{}'.format(len(label_ones))
-        print 'length of label_twos:{}'.format(len(label_twos))
-        print 'length of label_threes:{}'.format(len(label_threes))
-        print 'length of label_fours:{}'.format(len(label_fours))
-        print 'labels.shape:',labels.shape
+        # print 'length of label_zeros:{}'.format(len(label_zeros))
+        # print 'length of label_ones:{}'.format(len(label_ones))
+        # print 'length of label_twos:{}'.format(len(label_twos))
+        # print 'length of label_threes:{}'.format(len(label_threes))
+        # print 'length of label_fours:{}'.format(len(label_fours))
+        # print 'labels.shape:',labels.shape
 
-        # for i in xrange(len(label_ones)):
-        #     sliced_image[label_ones[i][0]][label_ones[i][1]] = red_multiplier
-        # for i in xrange(len(label_twos)):
-        #     sliced_image[label_twos[i][0]][label_twos[i][1]] = green_multiplier
-        # for i in xrange(len(label_threes)):
-        #     sliced_image[label_threes[i][0]][label_threes[i][1]] = blue_multiplier
-        # for i in xrange(len(label_fours)):
-        #     sliced_image[label_fours[i][0]][label_fours[i][1]] = yellow_multiplier
+        for i in xrange(len(label_ones)):
+            sliced_image[label_ones[i][0]][label_ones[i][1]] = red_multiplier
+        for i in xrange(len(label_twos)):
+            sliced_image[label_twos[i][0]][label_twos[i][1]] = green_multiplier
+        for i in xrange(len(label_threes)):
+            sliced_image[label_threes[i][0]][label_threes[i][1]] = blue_multiplier
+        for i in xrange(len(label_fours)):
+            sliced_image[label_fours[i][0]][label_fours[i][1]] = yellow_multiplier
 
-        return img_mask, labels
+        return sliced_image,seg_result, labels
 
     def intersection(self, predict, label):
         A = np.array(predict)
         B = np.array(label)
         aset = set([tuple(x) for x in A])
         bset = set([tuple(x) for x in B])
-        return np.array([x for x in aset & bset])
+
+        intersect = np.array([x for x in aset & bset])
+        return intersect
 
     def union(self, predict, label):
         A = np.array(predict)
@@ -270,9 +282,12 @@ class SegmentationModel(object):
         
         segmentation = self.predict_image(test_img, show=True)
         seg_full = np.pad(segmentation, (16,16), mode='edge')  #the model's prediction on the test set
+
         
         #gt = io.imread(label).astype(int)  # gt----标签图像
         label = io.imread(test_img).astype(int).reshape(4,240,240)
+        brain_mask = np.argwhere( label[2]!=0 )
+
         name = test_img.split('/')[8]
         gt = io.imread(LABEL_PATH+name).astype(int)
 
@@ -285,6 +300,8 @@ class SegmentationModel(object):
         #edema 
         edema_gt = np.argwhere(gt == 2)
         edema_seg = np.argwhere(seg_full == 2)
+        n_edema_gt = np.argwhere(gt != 2)
+        n_edema_seg = np.argwhere(seg_full != 2)
             
         # enhancing tumor
         adv_gt = np.argwhere(gt == 4)
@@ -294,13 +311,103 @@ class SegmentationModel(object):
 
         # core tumor 1,3,4
         noadv_gt = np.argwhere(gt == 3)
+        n_noadv_gt = np.argwhere(gt!=3)
         necrosis_gt = np.argwhere(gt == 1)
+        n_necrosis_gt = np.argwhere(gt != 1)
         core_gt = np.append(adv_gt, noadv_gt, axis = 0)
         core_gt = np.append(core_gt, necrosis_gt, axis = 0)
         n_core_gt = np.append(n_tumor_gt, edema_gt, axis = 0)
 
         noadv_seg = np.argwhere(seg_full == 3)
+        n_noadv_seg = np.argwhere(seg_full != 3)
         necrosis_seg = np.argwhere(seg_full == 1)
+        n_necrosis_seg = np.argwhere(seg_full != 1)
+        core_seg = np.append(noadv_seg, adv_seg, axis = 0)
+        core_seg = np.append(core_seg, necrosis_seg, axis = 0)
+        n_core_seg = np.append(n_tumor_seg, edema_seg, axis = 0)
+
+        tumor = self.intersection(tumor_gt, tumor_seg, brain_mask)
+        adv = self.intersection(adv_gt, adv_seg, brain_mask)
+        core = self.intersection(core_gt, core_seg, brain_mask)
+
+        n_tumor = self.intersection(n_tumor_gt, n_tumor_seg, brain_mask)
+        n_adv = self.intersection(n_adv_gt, n_adv_seg, brain_mask)
+        n_core = self.intersection(n_core_gt, n_core_seg, brain_mask)
+
+        corss_0 = n_tumor
+        cross_1 = self.intersection(necrosis_gt, necrosis_seg, brain_mask)
+        cross_2 = self.intersection(edema_gt, edema_seg, brain_mask)
+        cross_3 = self.intersection(noadv_gt, noadv_seg, brain_mask)
+        cross_4 = adv
+
+        n_0 = n_tumor
+        n_1 = self.intersection(n_necrosis_gt, n_necrosis_seg, brain_mask)
+        n_2 = self.intersection(n_edema_gt, n_edema_seg, brain_mask)
+        n_3 = self.intersection(n_noadv_gt, n_noadv_seg, brain_mask)
+        n_4 = n_adv
+
+        return [len(tumor), len(tumor_gt), len(tumor_seg), len(n_tumor),len(n_tumor_gt), len(n_tumor_seg)], \
+            [len(core), len(core_gt), len(core_seg), len(n_core), len(n_core_gt), len(n_core_seg)], \
+            [len(adv), len(adv_gt), len(adv_seg), len(n_adv), len(n_adv_gt), len(n_adv_seg)], \
+            [len(cross_1), len(necrosis_gt), len(necrosis_seg), len(n_1), len(n_necrosis_gt), len(n_necrosis_seg)], \
+            [len(cross_2), len(edema_gt), len(edema_seg), len(n_2), len(n_edema_gt), len(n_edema_seg)], \
+            [len(cross_3), len(noadv_gt), len(noadv_seg), len(n_3), len(n_noadv_gt), len(n_noadv_seg)]
+
+    def get_dice(self, test_img):
+        '''
+        1: Non-brain, non-tumor, necrosis, cyst, hemorrhage
+        2: Surrounding edema
+        3: Non-enhancing tumor
+        4: enhancing tumor core
+        0: everything else
+
+        The complete tumor region (including all four tumor structures). 
+        The core tumor region (including all tumor structures exept “edema”). 
+        The enhancing tumor region (including the “enhanced tumor”structure).
+        '''
+        
+        segmentation = self.predict_image(test_img, show=True)
+        seg_full = np.pad(segmentation, (16,16), mode='edge')  #the model's prediction on the test set
+
+        
+        #gt = io.imread(label).astype(int)  # gt----标签图像
+        label = io.imread(test_img).astype(int).reshape(4,240,240)
+        brain_mask = np.argwhere( label[2]!=0 )
+
+        name = test_img.split('/')[8]
+        gt = io.imread(LABEL_PATH+name).astype(int)
+
+        # complete tumor
+        tumor_gt = self.intersection(np.argwhere(gt != 0), brain_mask)
+        tumor_seg = self.intersection(np.argwhere(seg_full != 0), brain_mask)
+        n_tumor_gt = self.intersection(np.argwhere(gt==0), brain_mask)
+        n_tumor_seg = self.intersection(np.argwhere(seg_full == 0), brain_mask)
+
+        #edema 
+        edema_gt = np.argwhere(gt == 2)
+        edema_seg = np.argwhere(seg_full == 2)
+        n_edema_gt = self.intersection(np.argwhere(gt != 2), brain_mask)
+        n_edema_seg = self.intersection(np.argwhere(seg_full != 2), brain_mask)
+            
+        # enhancing tumor
+        adv_gt = np.argwhere(gt == 4)
+        adv_seg = np.argwhere(seg_full == 4)
+        n_adv_gt = self.intersection(np.argwhere(gt != 4), brain_mask)
+        n_adv_seg = self.intersection(np.argwhere(seg_full != 4), brain_mask)
+
+        # core tumor 1,3,4
+        noadv_gt = np.argwhere(gt == 3)
+        n_noadv_gt = self.intersection(np.argwhere(gt!=3), brain_mask)
+        necrosis_gt = np.argwhere(gt == 1)
+        n_necrosis_gt = self.intersection(np.argwhere(gt != 1), brain_mask)
+        core_gt = np.append(adv_gt, noadv_gt, axis = 0)
+        core_gt = np.append(core_gt, necrosis_gt, axis = 0)
+        n_core_gt = np.append(n_tumor_gt, edema_gt, axis = 0)
+
+        noadv_seg = np.argwhere(seg_full == 3)
+        n_noadv_seg = self.intersection(np.argwhere(seg_full != 3), brain_mask)
+        necrosis_seg = np.argwhere(seg_full == 1)
+        n_necrosis_seg = self.intersection(np.argwhere(seg_full != 1), brain_mask)
         core_seg = np.append(noadv_seg, adv_seg, axis = 0)
         core_seg = np.append(core_seg, necrosis_seg, axis = 0)
         n_core_seg = np.append(n_tumor_seg, edema_seg, axis = 0)
@@ -313,64 +420,84 @@ class SegmentationModel(object):
         n_adv = self.intersection(n_adv_gt, n_adv_seg)
         n_core = self.intersection(n_core_gt, n_core_seg)
 
+        corss_0 = n_tumor
+        cross_1 = self.intersection(necrosis_gt, necrosis_seg)
+        cross_2 = self.intersection(edema_gt, edema_seg)
+        cross_3 = self.intersection(noadv_gt, noadv_seg)
+        cross_4 = adv
+
+        n_0 = n_tumor
+        n_1 = self.intersection(n_necrosis_gt, n_necrosis_seg)
+        n_2 = self.intersection(n_edema_gt, n_edema_seg)
+        n_3 = self.intersection(n_noadv_gt, n_noadv_seg)
+        n_4 = n_adv
+
         return [len(tumor), len(tumor_gt), len(tumor_seg), len(n_tumor),len(n_tumor_gt), len(n_tumor_seg)], \
+            [len(core), len(core_gt), len(core_seg), len(n_core), len(n_core_gt), len(n_core_seg)], \
             [len(adv), len(adv_gt), len(adv_seg), len(n_adv), len(n_adv_gt), len(n_adv_seg)], \
-            [len(core), len(core_gt), len(core_seg), len(n_core), len(n_core_gt), len(n_core_seg)]
+            [len(cross_1), len(necrosis_gt), len(necrosis_seg), len(n_1), len(n_necrosis_gt), len(n_necrosis_seg)], \
+            [len(cross_2), len(edema_gt), len(edema_seg), len(n_2), len(n_edema_gt), len(n_edema_seg)], \
+            [len(cross_3), len(noadv_gt), len(noadv_seg), len(n_3), len(n_noadv_gt), len(n_noadv_seg)]
+            
 
 if __name__ == '__main__':
-    nb_epoch=10
-    batch_size=100
+    
+    # nb_epoch=10
+    # batch_size=100
     # train_data = glob('/mnt/filsystem1/code/dsb2017/code/zang/train_set/**')
     # val_data = glob('/mnt/filsystem1/code/dsb2017/code/zang/val_set/**')
     # patches = PatchLibrary((33,33), train_data, val_data, batch_size)
-    # train_gen = buffered_gen_mp(patches.make_patches(data_set='train'), buffer_size=1)
-    # val_gen = buffered_gen_mp(patches.make_patches(data_set='valedation'), buffer_size=1)
-    '''
-    X1 = np.load('/mnt/filsystem1/code/dsb2017/code/zang/gen_train.npy')
-    Y = np.load('/mnt/filsystem1/code/dsb2017/code/zang/gen_labels.npy')
+    # train_gen = buffered_gen_mp(patches.gen_patches(data_set='train'), buffer_size=1)
+    # val_gen = buffered_gen_mp(patches.gen_patches(data_set='valedation'), buffer_size=1)
 
-    model = SegmentationModel(n_epoch=10, batch_size=100, architecture='two_path')
-    sgd = SGD(lr=1e-4, decay=1e-6, momentum=0.9, nesterov=True)
+    architect = 'two_path'
+    '''
+    X1 = np.load('/mnt/filsystem1/code/dsb2017/code/zang/train.npy')
+    Y = np.load('/mnt/filsystem1/code/dsb2017/code/zang/labels.npy')
+
+    model = SegmentationModel(n_epoch=10, batch_size=200, architecture=architect)
+    sgd = SGD(lr=1e-3, decay=1e-6, momentum=0.9, nesterov=True)
 
     model.model_comp.compile(loss='categorical_crossentropy', optimizer=sgd, metrics=['accuracy'])
     checkpointer = ModelCheckpoint(filepath="./models/bm_{epoch:02d}-{val_loss:.2f}.hdf5", verbose=1,period=10)
     # for i in range(10):
     #     model.model_comp.fit_generator(train_gen, samples_per_epoch = batch_size*700, 
     #         nb_epoch = nb_epoch, verbose = 1, validation_data = val_gen, nb_val_samples = batch_size*150)
-
-    model.model_comp.fit(X1, Y, batch_size=200, nb_epoch=10, validation_split=0.2, callbacks=[checkpointer])
-    model.save_model('models/two_path')
+    model.model_comp.fit(X1, Y, batch_size=400, nb_epoch=30, validation_split=0.1, callbacks=[checkpointer])
+    model.save_model('models/{}'.format(architect))
     '''
-
-    tests = glob('/mnt/filsystem1/code/dsb2017/code/zang/val_set/**')
-
-    model =SegmentationModel(loaded_model=True,architecture='two_path')
-
+    tests = glob('/mnt/filsystem1/code/dsb2017/code/zang/val_set/pat0013**')
+    
+    model =SegmentationModel(loaded_model=True,architecture=architect)
     '''
-    for i in xrange(50,100):
+    LABEL = '/mnt/filsystem1/code/dsb2017/code/zang/predict/label/'
+    SEG = '/mnt/filsystem1/code/dsb2017/code/zang/predict/global_seg/'
+    for i in xrange(len(tests)):
         ori = io.imread(tests[i])
         img = ori.reshape(4,240,240)
-        predict, label= model.show_segmented_image(tests[i])
-        print tests[i]
-        plt.figure(13)
-        plt.subplot(131)
-        plt.imshow(predict)
-        plt.subplot(132)
-        plt.imshow(label)
-        plt.subplot(133)
-        plt.imshow(img[1], cmap='gray')
-        plt.show()
+        ground_truth, predict, label= model.show_segmented_image(tests[i])
+        name = tests[i].split('/')[8]
+        #io.imsave(LABEL+name, ground_truth[:][0:240])
+        io.imsave(SEG+name, predict[:][0:240])
+        # print name, i
+        # plt.subplot(121)
+        # plt.imshow(ground_truth[:][0:240])
+        # plt.subplot(122)
+        # plt.imshow(predict[:][0:240])
+        # plt.show()
     '''
-    
-    n_full=np.zeros(6); n_core=np.zeros(6); n_advancing=np.zeros(6)
+    n_full=np.zeros(6); n_core=np.zeros(6); n_advancing=np.zeros(6); necrosis = np.zeros(6); edema = np.zeros(6); noadv = np.zeros(6)
     for i in xrange(len(tests)):
-        full, core, advancing = model.get_dice_coef(tests[i])
+        print i
+        full, core, advancing, cross_1, cross_2, cross_3 = model.get_dice(tests[i])
         n_full += full
         n_core += core
         n_advancing += advancing
-    print 'full_tumor:{}\n core_tumor:{}\n advancing_tumor:{}\n'.format(n_full, n_core, n_advancing)
+        necrosis += cross_1
+        edema += cross_2
+        noadv += cross_3
+    print 'full_tumor:{}\n core_tumor:{}\n advancing_tumor:{}\n necrosis:{}\n edema:{}\n noadv:{}\n'.format(n_full, n_core, n_advancing, necrosis, edema, noadv)
     
-
     d_full= 2*float(n_full[0]) / float(n_full[1]+n_full[2])
     d_core= 2*float(n_core[0]) / float(n_core[1]+n_core[2])
     d_advancing= 2*float(n_advancing[0]) / float(n_advancing[1]+n_advancing[2])
@@ -383,18 +510,19 @@ if __name__ == '__main__':
     spec_core = float(n_core[3]) / float(n_core[4])
     spec_advancing = float(n_advancing[3]) / float(n_advancing[4])
 
-    print ' '
+    print architect
     print 'Region_________________| Dice Coefficient'
-    print 'Complete Tumor_________| {0:.2f}'.format(d_full)
-    print 'Core Tumor_____________| {0:.2f}'.format(d_core)
-    print 'Enhancing Tumor________| {0:.2f}'.format(d_advancing)
+    print 'Complete Tumor_________| {0:.4f}'.format(d_full)
+    print 'Core Tumor_____________| {0:.4f}'.format(d_core)
+    print 'Enhancing Tumor________| {0:.4f}'.format(d_advancing)
 
     print 'Region_________________| Sensitivity'
-    print 'Complete Tumor_________| {0:.2f}'.format(sen_full)
-    print 'Core Tumor_____________| {0:.2f}'.format(sen_core)
-    print 'Enhancing Tumor________| {0:.2f}'.format(sen_advancing)
+    print 'Complete Tumor_________| {0:.4f}'.format(sen_full)
+    print 'Core Tumor_____________| {0:.4f}'.format(sen_core)
+    print 'Enhancing Tumor________| {0:.4f}'.format(sen_advancing)
 
     print 'Region_________________| Specificity'
     print 'Complete Tumor_________| {0:.4f}'.format(spec_full)
     print 'Core Tumor_____________| {0:.4f}'.format(spec_core)
     print 'Enhancing Tumor________| {0:.4f}'.format(spec_advancing)
+    

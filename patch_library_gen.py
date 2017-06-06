@@ -25,15 +25,15 @@ ORI_PATH = '/mnt/filsystem1/code/dsb2017/code/zang/'
 LABEL_PATH = ORI_PATH + 'labels/'
 
 class PatchLibrary(object):
-    def __init__(self, patch_size,train_data, val_data, batch_size):
+    def __init__(self, patch_size,train_data, val_data,num_samples):
         '''
         class for creating patches and subpatches from training data to use as input for segmentation models.
         INPUT   (1) tuple 'patch_size': size (in voxels) of patches to extract. Use (33,33) for sequential model
                 (2) list 'train_data': list of filepaths to all training data saved as pngs. images should have shape (5*240,240)
-                (3) int ' batch_size': the number of patches to collect from training data.
+                (3) int 'num_samples': the number of patches to collect from training data.
         '''
         self.patch_size = patch_size
-        self.batch_size =  batch_size
+        self.num_samples = num_samples
         self.train_data = train_data
         self.val_data = val_data
         self.h = self.patch_size[0]
@@ -45,7 +45,7 @@ class PatchLibrary(object):
         INPUT:  (1) list 'training_images': all training images to select from
                 (2) int 'class_num': class to sample from choice of {0, 1, 2, 3, 4}.
                 (3) tuple 'patch_size': dimensions of patches to be generated defaults to 65 x 65
-        OUTPUT: (1)  batch_size patches from class 'class_num' randomly selected.
+        OUTPUT: (1) num_samples patches from class 'class_num' randomly selected.
         '''
         h,w = self.patch_size[0], self.patch_size[1]
         patches,labels = [],np.full(num_patches, class_num, 'float')
@@ -74,7 +74,6 @@ class PatchLibrary(object):
 
 
         return np.array(patches), label
-
     def intersection(self, predict, label):
         A = np.array(predict)
         B = np.array(label)
@@ -120,7 +119,7 @@ class PatchLibrary(object):
     def patches_by_entropy(self, num_patches):
         '''
         Finds high-entropy patches based on label, allows net to learn borders more effectively.
-        INPUT: int 'num_patches': defaults to  batch_size, enter in quantity it using in conjunction with randomly sampled patches.
+        INPUT: int 'num_patches': defaults to num_samples, enter in quantity it using in conjunction with randomly sampled patches.
         OUTPUT: list of patches (num_patches, 4, h, w) selected by highest entropy
         '''
         h,w = self.patch_size[0], self.patch_size[1]
@@ -159,49 +158,6 @@ class PatchLibrary(object):
             ct += 1
         return np.array(patches[:num_patches]), np.array(labels[:num_patches])
 
-    def generator(self, candidate, classes=[0,1,2,3,4], channels=4):
-        name = candidate.split('/')[8]
-        h,w = self.patch_size[0], self.patch_size[1]
-        img = io.imread(candidate).reshape(4, 240, 240).astype('float')
-        # Record the brain tissue
-        brain = np.argwhere(img[0] != 0)
-
-        groud_truth = io.imread(LABEL_PATH+name)
-        img = [np.pad(i, (16,16), mode='edge') for i in img]
-
-        patches, labels = np.zeros((channels,h,w)), np.zeros(1)
-        patch_reserve, label_reserve = [],[]
-        for i in xrange(len(classes)):
-            # Because there's too much sample for category 0
-            # We choose only 0.8% samples from 0
-            if i==0: percent = 0.004
-            elif i==2: percent = 0.08
-            elif i==4: percent = 0.18
-            else: percent = 0.50
-            samples = np.argwhere((groud_truth == classes[i]))
-            cor = random.sample(samples, int(len(samples)*percent))
-    
-            for i in xrange(len(cor)):
-
-                p = cor[i]
-                p_ix = (p[0]-(h/2)+16, p[0]+((h+1)/2)+16, p[1]-(w/2)+16, p[1]+((w+1)/2)+16)
-                patch = np.array([i[p_ix[0]:p_ix[1], p_ix[2]:p_ix[3]] for i in img[:4]])
-                label = np.array(groud_truth[p[0]][p[1]]).reshape(1)
-
-                if patch.shape != (channels, h, w) or len(np.argwhere(patch == 0)) > 2*(h * w):
-                    #print str(p) ,patch.shape, len(np.argwhere(patch == 0))
-                    continue
-                else:
-                    #set 0 <= pix intensity <= 1 
-                    for slice in xrange(len(patch)):
-                        if np.max(patch[slice]) != 0:
-                            patch[slice] /= np.max(patch[slice])
-
-                    patches = np.concatenate((patches, patch), axis=0)
-                    labels = np.concatenate((labels, label), axis=0)
-
-        return patches[channels:], labels[1:]
-
     def gen_patches(self, data_set ,entropy=False, balanced_classes=True, classes=[0,1,2,3,4]):
         '''
         Creates X and y for training CNN
@@ -212,38 +168,65 @@ class PatchLibrary(object):
         OUTPUT  Data generator. generates 100 training samples. 
                 Currently generates unfixed size samples due to various conditions.
         '''
-        batch_size = self.batch_size
         if data_set=='train':
             sets = self.train_data
         elif data_set=='valedation':
             sets = self.val_data
-        h,w = self.patch_size[0], self.patch_size[1]
-        batch_img, batch_label = np.zeros((4,h,w)), np.zeros(1)
         for candidate in sets:
-            patches, labels = self.generator(candidate)
+            name = candidate.split('/')[8]
+            h,w = self.patch_size[0], self.patch_size[1]
+            img = io.imread(candidate).reshape(4, 240, 240).astype('float')
+            # Record the brain tissue
+            brain = np.argwhere(img[0] != 0)
+
+            groud_truth = io.imread(LABEL_PATH+name)
+            img = [np.pad(i, (16,16), mode='edge') for i in img]
+
+            patches, labels = [], []
+            for i in xrange(len(classes)):
+                # Because there's too much sample for category 0
+                # We choose only 0.8% samples from 0
+                if i==0: percent = 0.008
+                elif i==2: percent = 0.16
+                elif i==4: percent = 0.375
+                else: percent = 0.95
+                samples = np.argwhere((groud_truth == classes[i]))
+                cor = random.sample(samples, int(len(samples)*percent))
+
+                j=i
+        
+                for i in xrange(len(cor)):
+
+                    p = cor[i]
+                    p_ix = (p[0]-(h/2)+16, p[0]+((h+1)/2)+16, p[1]-(w/2)+16, p[1]+((w+1)/2)+16)
+                    patch = np.array([i[p_ix[0]:p_ix[1], p_ix[2]:p_ix[3]] for i in img[:4]])
+                    label = groud_truth[p[0]][p[1]]
+
+                    if patch.shape != (4, h, w) or len(np.argwhere(patch == 0)) > 2*(h * w):
+                        #print str(p) ,patch.shape, len(np.argwhere(patch == 0))
+                        continue
+                    else:
+                        #set 0 <= pix intensity <= 1 
+                        for slice in xrange(len(patch)):
+                            if np.max(patch[slice]) != 0:
+                                patch[slice] /= np.max(patch[slice])
+
+                        patches.append(patch)
+                        labels.append(label)
             if len(labels)==0:
                 continue
+        
+            X1_train=np.array(patches).reshape(len(patches), 4, self.h, self.w)
+            Y_train=np.array(labels).reshape(len(patches))
+            
+            Y_train = np_utils.to_categorical(Y_train, 5)
+            shuffle = zip(X1_train, Y_train)
+            np.random.shuffle(shuffle)
 
-            batch_img = np.concatenate((batch_img, patches), axis=0)
-            batch_label = np.concatenate((batch_label, labels), axis=0)
+            X1_train = np.array([shuffle[i][0] for i in xrange(len(shuffle))])
+            Y_train = np.array([shuffle[i][1] for i in xrange(len(shuffle))])
 
-            if len(batch_label)>=batch_size*8:
-                X1_train=np.array(batch_img[:batch_size*8*4]).reshape(batch_size*8, 4, self.h, self.w)
-                Y_train=np.array(batch_label[:batch_size]*8).reshape(batch_size)
-
-                batch_img = batch_img[batch_size*8*4+1:]
-                batch_label = batch_label[batch_size*8+1:]
-                
-                Y_train = np_utils.to_categorical(Y_train, 5)
-                shuffle = zip(X1_train, Y_train)
-                np.random.shuffle(shuffle)
-
-                X1_train = np.array([shuffle[i][0] for i in xrange(len(shuffle))])
-                Y_train = np.array([shuffle[i][1] for i in xrange(len(shuffle))])
-
-                for i in range(8):
-                    low = i*batch_size; up = (i+1)*batch_size
-                    yield X1_train[low:up], Y_train[low:up]
+            yield X1_train, Y_train
 
     def make_patches(self, data_set ,entropy=False, balanced_classes=True, classes=[0,1,2,3,4]):
         '''
@@ -269,13 +252,14 @@ class PatchLibrary(object):
             groud_truth = io.imread(LABEL_PATH+name)
             img = [np.pad(i, (16,16), mode='edge') for i in img]
 
+            patches, labels = [], []
             for i in xrange(len(classes)):
                 # Because there's too much sample for category 0
                 # We choose only 0.8% samples from 0
-                if i==0: percent = 0.004
-                elif i==2: percent = 0.08
-                elif i==4: percent = 0.18
-                else: percent = 0.5
+                if i==0: percent = 0.008
+                elif i==2: percent = 0.16
+                elif i==4: percent = 0.375
+                else: percent = 0.95
                 samples = np.argwhere((groud_truth == classes[i]))
                 cor = random.sample(samples, int(len(samples)*percent))
 
@@ -314,8 +298,8 @@ class PatchLibrary(object):
         X1_train = np.array([shuffle[i][0] for i in xrange(len(shuffle))])
         Y_train = np.array([shuffle[i][1] for i in xrange(len(shuffle))])
 
-        np.save('train.npy', X1_train)
-        np.save('labels.npy', Y_train)
+        np.save('gen_train.npy', X1_train)
+        np.save('gen_labels.npy', Y_train)
            
 
 def buffered_gen_mp(source_gen, buffer_size=1, sleep_time=1):
@@ -371,7 +355,7 @@ def buffered_gen_mp(source_gen, buffer_size=1, sleep_time=1):
             break
 if __name__ == '__main__':
 
-    train_data = glob('/mnt/filsystem1/code/dsb2017/code/zang/train_set/**')
+    train_data = glob('/mnt/filsystem1/code/dsb2017/code/zang/temp/**')
     val_data = glob('/mnt/filsystem1/code/dsb2017/code/zang/test_set/**')
     patches = PatchLibrary((33,33), train_data, val_data, 160)
 
